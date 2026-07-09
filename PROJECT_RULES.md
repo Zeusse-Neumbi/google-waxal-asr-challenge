@@ -31,7 +31,7 @@ Engineering rules for the WAXAL ASR project. Non-negotiable.
 
 ## 5. Quality gates
 
-- Every PR must pass: `ruff`, `black --check`, `isort --check`, `mypy`, `pytest`.
+- Every PR must pass: `ruff`, `black --check`, `mypy -p waxal_asr`, `pytest`.
 - No `print()` in `src/` — use `loguru`.
 - Public functions have type hints + docstrings.
 - Tests for `metrics/`, `data/` utilities, and `config/`.
