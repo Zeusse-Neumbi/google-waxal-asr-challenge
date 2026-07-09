@@ -1,0 +1,30 @@
+# ──────────────────────────────────────────────────────────────
+# Evaluation configuration.
+# Independent of training code.
+# ──────────────────────────────────────────────────────────────
+
+defaults: [baseline]
+
+evaluation:
+  batch_size: 32
+  normalize_text: true
+  lowercase: true
+  strip_punctuation: true
+  unicode_normalization: NFC
+  collapse_whitespace: true
+  remove_diacritics: false
+  metric: combined         # wer | cer | combined
+
+  # --- Stratified reporting ---
+  stratify:
+    by_language: true
+    by_duration_bucket: true
+    duration_buckets: [0, 3, 6, 10, 20, 30]   # seconds
+    by_snr_bucket: false
+    by_speaker: false
+
+  # --- Outputs ---
+  output_dir: ${paths.experiments}
+  save_predictions: true
+  save_report_html: true
+  save_error_summary: true

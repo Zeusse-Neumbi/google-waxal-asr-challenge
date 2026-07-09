@@ -1,0 +1,18 @@
+---
+name: Feature request
+about: Propose a new feature or improvement
+title: "[feat] "
+labels: enhancement
+---
+
+## Problem
+<!-- What problem does this solve? (Describe the problem first, not the solution.) -->
+
+## Proposed solution
+<!-- What would you like to happen? -->
+
+## Alternatives considered
+<!-- What else did you consider? -->
+
+## Additional context
+<!-- Anything else relevant. -->

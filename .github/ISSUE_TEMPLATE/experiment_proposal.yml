@@ -1,0 +1,25 @@
+---
+name: Experiment proposal
+about: Propose a new experiment to run
+title: "[exp] "
+labels: experiment
+---
+
+## Hypothesis
+<!-- One sentence: what change do you expect, and why? -->
+
+## Targeted error mode
+<!-- Which error does this address? (insertions/deletions/substitutions, language,
+duration, noise) Reference the latest error analysis if applicable. -->
+
+## Baseline
+<!-- Which experiment number is this improving on? -->
+
+## Proposed config diff
+<!-- What changes from the baseline config? -->
+
+## Expected impact
+<!-- Low / medium / high, and why. -->
+
+## Risks
+<!-- What could go wrong? -->

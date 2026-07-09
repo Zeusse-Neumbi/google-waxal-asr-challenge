@@ -1,0 +1,29 @@
+---
+name: Bug report
+about: Report something that's broken
+title: "[bug] "
+labels: bug
+---
+
+## Summary
+<!-- One-sentence description of the problem. -->
+
+## Steps to reproduce
+1.
+2.
+3.
+
+## Expected behavior
+<!-- What you expected. -->
+
+## Actual behavior
+<!-- What happened instead. -->
+
+## Environment
+- OS:
+- Python:
+- Commit / branch:
+
+## Logs / stack trace
+```
+```

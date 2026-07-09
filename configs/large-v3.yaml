@@ -1,0 +1,49 @@
+# ──────────────────────────────────────────────────────────────
+# Whisper large-v3 configuration.
+# ──────────────────────────────────────────────────────────────
+
+defaults: [baseline]
+
+experiment:
+  name: whisper_large_v3_finetune
+  number: 003
+  description: "Whisper-large-v3 fine-tune on WAXAL."
+
+model:
+  name: whisper
+  model_id: openai/whisper-large-v3
+  language: null
+  task: transcribe
+  load_in_8bit: false
+  load_in_4bit: true
+  freeze_encoder: false
+
+training:
+  epochs: 6
+  batch_size: 4
+  gradient_accumulation_steps: 8   # effective batch 32
+  mixed_precision: bf16
+  gradient_checkpointing: true
+
+optimizer:
+  lr: 1.0e-6
+  weight_decay: 0.01
+
+scheduler:
+  name: cosine
+  warmup_ratio: 0.15
+
+augmentation:
+  enabled: true
+  specaugment:
+    time_mask_param: 40
+    freq_mask_param: 20
+    n_time_masks: 2
+    n_freq_masks: 2
+  noise:
+    enabled: true
+    snr_db_min: 10
+    snr_db_max: 25
+  speed_perturbation:
+    enabled: true
+    factors: [0.9, 1.0, 1.1]

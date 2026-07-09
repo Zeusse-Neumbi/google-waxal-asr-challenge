@@ -1,0 +1,38 @@
+# ──────────────────────────────────────────────────────────────
+# Whisper-small baseline configuration.
+# Inherits from baseline.yaml.
+# ──────────────────────────────────────────────────────────────
+
+defaults: [baseline]
+
+experiment:
+  name: whisper_small_baseline
+  number: 001
+  description: "Whisper-small fine-tune baseline on WAXAL."
+
+model:
+  name: whisper
+  model_id: openai/whisper-small
+  language: null          # auto-detect per-utterance if null
+  task: transcribe
+  load_in_8bit: false
+  load_in_4bit: false
+  freeze_encoder: true    # initial baseline: decoder-only fine-tune
+
+training:
+  epochs: 5
+  batch_size: 16
+  gradient_accumulation_steps: 2
+  mixed_precision: fp16
+  gradient_checkpointing: true
+
+optimizer:
+  lr: 5.0e-6
+  weight_decay: 0.01
+
+scheduler:
+  name: linear
+  warmup_ratio: 0.1
+
+augmentation:
+  enabled: false          # baseline: no augmentation

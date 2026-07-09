@@ -1,0 +1,42 @@
+# ──────────────────────────────────────────────────────────────
+# Whisper-medium configuration.
+# ──────────────────────────────────────────────────────────────
+
+defaults: [baseline]
+
+experiment:
+  name: whisper_medium_finetune
+  number: 002
+  description: "Whisper-medium fine-tune on WAXAL."
+
+model:
+  name: whisper
+  model_id: openai/whisper-medium
+  language: null
+  task: transcribe
+  load_in_8bit: false
+  load_in_4bit: true      # medium is heavier; 4-bit on Colab T4
+  freeze_encoder: false   # full fine-tune
+
+training:
+  epochs: 8
+  batch_size: 8
+  gradient_accumulation_steps: 4   # effective batch 32
+  mixed_precision: bf16
+  gradient_checkpointing: true
+
+optimizer:
+  lr: 3.0e-6
+  weight_decay: 0.01
+
+scheduler:
+  name: cosine
+  warmup_ratio: 0.1
+
+augmentation:
+  enabled: true
+  specaugment:
+    time_mask_param: 30
+    freq_mask_param: 15
+    n_time_masks: 2
+    n_freq_masks: 2

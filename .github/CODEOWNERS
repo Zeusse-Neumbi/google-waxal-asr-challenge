@@ -1,0 +1,24 @@
+# CODEOWNERS
+# Each line: <path pattern>  @github-username
+# Reviewers are auto-requested on PRs touching these paths.
+
+# Default owner for everything not otherwise specified.
+*                              @nkz
+
+# Configuration & infra
+/configs/                      @nkz
+/.github/                      @nkz
+/.opencode/                    @nkz
+/pyproject.toml                @nkz
+
+# Core framework
+/src/waxal_asr/config/         @nkz
+/src/waxal_asr/metrics/        @nkz
+/src/waxal_asr/data/           @nkz
+/src/waxal_asr/models/         @nkz
+/src/waxal_asr/training/       @nkz
+/src/waxal_asr/evaluation/     @nkz
+/src/waxal_asr/inference/      @nkz
+
+# Tests
+/tests/                        @nkz
