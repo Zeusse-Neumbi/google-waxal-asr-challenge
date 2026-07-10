@@ -66,7 +66,7 @@ def trim_silence(audio: torch.Tensor, threshold: float = 0.01) -> torch.Tensor:
     mask = audio.abs() > threshold
     if not mask.any():
         return audio.squeeze(0) if squeeze else audio
-    first = mask.any(dim=0).int().argmax().item()
-    last = audio.shape[-1] - mask.any(dim=0).int().flip(0).argmax().item()
+    first = int(mask.any(dim=0).int().argmax().item())
+    last = int(audio.shape[-1] - mask.any(dim=0).int().flip(0).argmax().item())
     out = audio[..., first:last]
     return out.squeeze(0) if squeeze else out

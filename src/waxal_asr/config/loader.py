@@ -111,7 +111,7 @@ def _build_config(data: dict[str, Any]) -> Config:
             val = d[f.name]
             ftype = hints.get(f.name, f.type)
             if is_dataclass(ftype) and isinstance(val, dict):
-                kwargs[f.name] = build(ftype, val)  # type: ignore[arg-type]
+                kwargs[f.name] = build(ftype, val)
             else:
                 # Coerce Path-typed fields from str.
                 if ftype is Path and isinstance(val, str):

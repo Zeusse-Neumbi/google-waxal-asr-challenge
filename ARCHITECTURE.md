@@ -82,7 +82,7 @@ Adding a new model = implementing the protocol + a config entry. No trainer chan
 ### Config System
 
 - YAML-first (`configs/`).
-- Loaded via OmegaConf / Hydra.
+- Loaded via a custom YAML resolver (see `waxal_asr.config.loader`).
 - Strongly-typed via `@dataclass` schemas in `waxal_asr.config.schemas`.
 - Configs compose via inheritance (`defaults: baseline.yaml`).
 

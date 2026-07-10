@@ -23,7 +23,7 @@ python scripts/verify_setup.py
 ruff check . && ruff format --check . && black --check . && mypy -p waxal_asr && pytest -m "not slow and not gpu and not network"
 ```
 
-- `ruff` handles both lint **and** import sorting (the `I` rule). There is no standalone `isort` in CI/pre-commit despite what old prose may say.
+- `ruff` handles both lint **and** import sorting (the `I` rule).
 - `black` is for formatting that `ruff format` doesn't cover (both run in CI).
 - `mypy -p waxal_asr` (package mode) — **not** `mypy src` which fails because of the `src/` layout + editable install conflict.
 
@@ -95,7 +95,7 @@ src/waxal_asr/          ← single package, src-layout
 ## Other files worth reading
 
 - `opencode.json` → `"instructions": ["AGENTS.md", "PROJECT_RULES.md"]` — both are auto-loaded
-- `PROJECT_RULES.md` — non-negotiable engineering rules (note: §5 mentions `isort` which is stale; ruff handles imports)
+- `PROJECT_RULES.md` — non-negotiable engineering rules
 - `SETUP.md` — the original bootstrap spec (reference, not active instruction)
 - `ROADMAP.md` — phased experiment plan
 - `ARCHITECTURE.md` — system design diagram

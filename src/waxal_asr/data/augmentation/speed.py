@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import torch
 import torchaudio
+from typing import cast
 
 __all__ = ["speed_perturb"]
 
@@ -22,4 +23,4 @@ def speed_perturb(audio: torch.Tensor, sample_rate: int, factor: float = 1.0) ->
         squeeze = False
     effects = [["speed", str(factor)], ["rate", str(sample_rate)]]
     out, _ = torchaudio.sox_effects.apply_effects_tensor(audio, sample_rate, effects)
-    return out.squeeze(0) if squeeze else out
+    return cast("torch.Tensor", out.squeeze(0) if squeeze else out)

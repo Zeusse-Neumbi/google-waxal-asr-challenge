@@ -4,26 +4,24 @@
 
 defaults: [baseline]
 
-experiment:
-  name: whisper_large_v3_finetune
-  number: 003
-  description: "Whisper-large-v3 fine-tune on WAXAL."
+raw:
+  experiment:
+    name: whisper_large_v3_finetune
+    number: 003
+    description: "Whisper-large-v3 fine-tune on WAXAL."
 
 model:
-  name: whisper
   model_id: openai/whisper-large-v3
-  language: null
-  task: transcribe
-  load_in_8bit: false
+  model_type: whisper
+  torch_dtype: float16
   load_in_4bit: true
-  freeze_encoder: false
 
 training:
-  epochs: 6
-  batch_size: 4
-  gradient_accumulation_steps: 8   # effective batch 32
-  mixed_precision: bf16
+  max_steps: 6000
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 8
   gradient_checkpointing: true
+  max_seq_length: 448
 
 optimizer:
   lr: 1.0e-6

@@ -16,7 +16,7 @@ Legend: ✅ done · 🚧 in progress · 📋 planned · 💡 idea
 
 ## Phase 1 — Data & Baseline 📋
 
-- 📋 Dataset download & manifest generation
+- 📋 HuggingFace `google/WaxalNLP` dataset loading & manifest generation
 - 📋 `notebooks/02_dataset_analysis.ipynb` EDA
 - 📋 `waxal_asr/data/` audio loader + preprocessing
 - 📋 Whisper-small zero-shot baseline (`exp001`)

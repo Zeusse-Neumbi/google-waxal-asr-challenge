@@ -1,39 +1,41 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "project": "google-waxal-asr-challenge",
-  "description": "State-of-the-art multilingual ASR pipeline for the Google WAXAL ASR Challenge.",
-
   "model": "openrouter/z-ai/glm-5.2",
-  "small_model": "openrouter/z-ai/glm-5.2",
+  "small_model": "openrouter/deepseek/deepseek-v4-flash",
+  "default_agent": "planner",
+  "instructions": [
+    "AGENTS.md",
+    "PROJECT_RULES.md"
+  ],
 
-  "instructions": ["AGENTS.md", "PROJECT_RULES.md"],
 
-  "agents": {
-    "planner": { "description": "Breaks complex work into reproducible, ordered plans.", "mode": "primary" },
-    "researcher": { "description": "Surveys papers, models, datasets, and prior art.", "mode": "subagent" },
-    "dataset-engineer": { "description": "Builds loaders, manifests, and preprocessing.", "mode": "subagent" },
-    "preprocessing": { "description": "Audio validation, resampling, normalization, augmentation.", "mode": "subagent" },
-    "training": { "description": "Implements and runs training loops and schedulers.", "mode": "subagent" },
-    "evaluation": { "description": "Computes WER/CER, generates reports and error analysis.", "mode": "subagent" },
-    "submission": { "description": "Generates and validates competition submissions.", "mode": "subagent" },
-    "reviewer": { "description": "Strict code review against PROJECT_RULES.", "mode": "subagent" },
-    "documentation": { "description": "Keeps docs, CHANGELOG, and experiment notes in sync.", "mode": "subagent" },
-    "experiment-manager": { "description": "Creates and tracks experiment directories.", "mode": "subagent" },
-    "github": { "description": "Manages branches, PRs, issues, and CI.", "mode": "subagent" },
-    "strategist": { "description": "Picks the next experiment based on error analysis.", "mode": "subagent" }
+  "agent": {
+    "planner":            { "description": "Breaks complex work into reproducible, ordered plans.", "mode": "primary" },
+    "researcher":          { "description": "Surveys papers, models, datasets, and prior art.", "mode": "subagent" },
+    "dataset-engineer":    { "description": "Builds loaders, manifests, and preprocessing.", "mode": "subagent" },
+    "preprocessing":       { "description": "Audio validation, resampling, normalization, augmentation.", "mode": "subagent" },
+    "training":            { "description": "Implements and runs training loops and schedulers.", "mode": "subagent" },
+    "evaluation":          { "description": "Computes WER/CER, generates reports and error analysis.", "mode": "subagent" },
+    "submission":          { "description": "Generates and validates competition submissions.", "mode": "subagent" },
+    "reviewer":            { "description": "Strict code review against PROJECT_RULES.", "mode": "subagent" },
+    "documentation":       { "description": "Keeps docs, CHANGELOG, and experiment notes in sync.", "mode": "subagent" },
+    "experiment-manager":  { "description": "Creates and tracks experiment directories.", "mode": "subagent" },
+    "github":              { "description": "Manages branches, PRs, issues, and CI.", "mode": "subagent" },
+    "strategist":          { "description": "Picks the next experiment based on error analysis.", "mode": "subagent" }
   },
 
-  "permissions": {
-    "edit": { "allow": true, "ask": false, "deny": false },
+  "permission": {
+    "edit": "allow",
     "bash": {
-      "deny": [
-        "rm -rf /",
-        "rm -rf ~",
-        "rm -rf .git",
-        "git push --force",
-        "git commit --amend --no-edit"
-      ]
+      "*": "allow",
+      "rm -rf /*": "deny",
+      "rm -rf ~*": "deny",
+      "rm -rf .git*": "deny",
+      "git push --force*": "deny",
+      "git push -f*": "deny",
+      "git commit --amend --no-edit": "deny"
     }
+
   },
 
   "share": "manual"

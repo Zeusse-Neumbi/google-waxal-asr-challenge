@@ -11,6 +11,7 @@ To add a new model:
 """
 
 from waxal_asr.models.base import ASRModel
+from waxal_asr.models.gemma3n import Gemma3NModel  # — trigger @register_model
 from waxal_asr.models.registry import build_model
 
-__all__ = ["ASRModel", "build_model"]
+__all__ = ["ASRModel", "Gemma3NModel", "build_model"]

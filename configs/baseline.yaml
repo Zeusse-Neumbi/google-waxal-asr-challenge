@@ -1,7 +1,6 @@
 # ──────────────────────────────────────────────────────────────
 # Default configuration (base).
 # All other configs inherit from this via `defaults: [baseline]`.
-# Never hardcode these values in src/ — read from config always.
 # ──────────────────────────────────────────────────────────────
 
 defaults: []
@@ -12,14 +11,13 @@ project:
   version: 0.1.0
   seed: 42
 
-# --- Paths (override via env or CLI, never hardcode in code) ---
+# --- Paths ---
 paths:
   data_raw: data/raw
   data_processed: data/processed
   data_interim: data/interim
   data_external: data/external
   metadata: data/metadata
-  manifests: data/metadata/manifest.csv
   outputs: outputs
   checkpoints: checkpoints
   experiments: experiments
@@ -27,43 +25,83 @@ paths:
   logs: outputs/logs
   cache: data/interim/cache
 
+# --- Dataset source ---
+dataset:
+  dataset_id: google/WaxalNLP
+  language: sna
+  streaming: true
+  sample_rate: 16000
+  num_validation_examples: 200
+  max_train_samples: null
+
 # --- Audio defaults ---
 audio:
   sample_rate: 16000
   mono: true
-  normalize: peak       # peak | rms | none
+  normalize: peak
   min_duration_s: 0.5
   max_duration_s: 30.0
+
+# --- Model ---
+model:
+  model_id: google/gemma-3n-E2B-it
+  model_type: gemma3n
+  torch_dtype: bfloat16
+  load_in_4bit: false
+  attn_implementation: eager
+  device_map: auto
+
+# --- LoRA ---
+lora:
+  enabled: true
+  r: 8
+  alpha: 16
+  dropout: 0.0
+  target_modules: [v_proj, o_proj]
+  bias: none
+  use_rslora: false
+  use_dora: false
+
+# --- Chat formatting ---
+chat:
+  system_message: "You are an assistant that transcribes speech accurately."
+  user_message: "Please transcribe this audio."
 
 # --- Reproducibility ---
 repro:
   seed: 42
   deterministic: true
-  benchmark: false      # set true for fixed input shapes
+  benchmark: false
   cudnn_deterministic: true
 
-# --- Training defaults ---
+# --- Training ---
 training:
-  epochs: 10
-  batch_size: 16
-  eval_batch_size: 32
-  gradient_accumulation_steps: 1
-  mixed_precision: fp16   # fp16 | bf16 | none
-  gradient_checkpointing: false
-  gradient_clip: 1.0
-  num_workers: 4
-  pin_memory: true
+  max_steps: 500
+  per_device_train_batch_size: 2
+  per_device_eval_batch_size: 2
+  gradient_accumulation_steps: 8
+  gradient_checkpointing: true
+  max_seq_length: 64
+  logging_steps: 10
+  eval_steps: 100
+  save_steps: 100
+  save_total_limit: 3
+  eval_strategy: steps
+  packing: false
+  dataloader_num_workers: 2
+  report_to: none
+  remove_unused_columns: false
 
 # --- Optimizer / scheduler ---
 optimizer:
   name: adamw
-  lr: 1.0e-5
+  lr: 1.0e-3
   weight_decay: 0.01
   betas: [0.9, 0.999]
   eps: 1.0e-8
 
 scheduler:
-  name: cosine           # cosine | linear | constant
+  name: cosine
   warmup_ratio: 0.1
   num_cycles: 1
 
@@ -73,7 +111,7 @@ checkpoint:
   save_best: true
   save_last: true
   save_top_k: 3
-  monitor: combined      # wer | cer | combined | val_loss
+  monitor: combined
   mode: min
 
 # --- Evaluation ---
@@ -83,11 +121,11 @@ evaluation:
   lowercase: true
   strip_punctuation: true
   unicode_normalization: NFC
-  metric: combined        # wer | cer | combined
+  metric: combined
 
 # --- Tracking ---
 tracking:
-  backend: local         # local | wandb | none
+  backend: local
   wandb_project: waxal-asr
   wandb_entity: null
   log_every_n_steps: 50
@@ -101,5 +139,5 @@ logging:
 
 # --- Hardware ---
 hardware:
-  device: auto           # auto | cpu | cuda | cuda:0
+  device: auto
   fallback_to_cpu: true

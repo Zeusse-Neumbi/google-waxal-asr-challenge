@@ -31,12 +31,12 @@ def spec_augment(
     for b in range(batch):
         for _ in range(n_freq_masks):
             if freq_mask_param > 0 and n_mels > 0:
-                f = torch.randint(0, min(freq_mask_param, n_mels), (1,)).item()
-                f0 = torch.randint(0, n_mels - f + 1, (1,)).item()
+                f = int(torch.randint(0, min(freq_mask_param, n_mels), (1,)).item())
+                f0 = int(torch.randint(0, n_mels - f + 1, (1,)).item())
                 out[b, f0 : f0 + f, :] = mask_value
         for _ in range(n_time_masks):
             if time_mask_param > 0 and n_time > 0:
-                t = torch.randint(0, min(time_mask_param, n_time), (1,)).item()
-                t0 = torch.randint(0, n_time - t + 1, (1,)).item()
+                t = int(torch.randint(0, min(time_mask_param, n_time), (1,)).item())
+                t0 = int(torch.randint(0, n_time - t + 1, (1,)).item())
                 out[b, :, t0 : t0 + t] = mask_value
     return out.squeeze(0) if squeeze else out

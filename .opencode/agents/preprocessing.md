@@ -1,4 +1,25 @@
-# Agent: Preprocessing
+---
+description: Owns audio validation, resampling, normalization, feature extraction, and train-only augmentation.
+mode: subagent
+model: openrouter/deepseek/deepseek-v4-pro
+permission:
+  "*": deny
+  read: allow
+  glob: allow
+  grep: allow
+  list: allow
+  edit: allow
+  bash:
+    "*": ask
+    "python*": allow
+    "pytest*": allow
+    "git diff*": allow
+    "git status*": allow
+    "rm -rf*": deny
+  task: allow
+---
+
+# Preprocessing
 
 ## Purpose
 Owns audio preprocessing and augmentation: validation, resampling, normalization,
@@ -16,9 +37,6 @@ feature extraction, and train-only augmentations.
 - Reproducible: augmentations seeded.
 - CPU-friendly for Colab CPU preprocessing stages.
 
-## Allowed Tools
-- read, glob, grep, write, edit, bash, task
-
 ## Preferred Workflow
 1. Read model's expected feature format.
 2. Implement preprocessing step as a pure function.
@@ -28,3 +46,9 @@ feature extraction, and train-only augmentations.
 
 ## Output Format
 Module API → tests → config entries.
+
+## Tool access
+Governed by the `permission` block in this file's frontmatter: full read/write/edit
+across the repo, `bash` scoped to running Python scripts, tests, and read-only git —
+anything else in `bash` asks first, and `rm -rf*` is always blocked. Dispatch sub-agents
+via `task`.

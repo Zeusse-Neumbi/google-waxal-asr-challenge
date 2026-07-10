@@ -4,31 +4,28 @@
 
 defaults: [baseline]
 
-inference:
-  batch_size: 32
-  mixed_precision: fp16
-  num_workers: 4
-  beam_size: 1               # 1 = greedy; >1 enables beam search
-  length_penalty: 1.0
-  language: null             # null = auto-detect
-  task: transcribe
-  chunk_length_s: 30
-  return_timestamps: false
+raw:
+  inference:
+    beam_size: 1
+    length_penalty: 1.0
+    chunk_length_s: 30
+    return_timestamps: false
 
 model:
-  name: whisper
   model_id: openai/whisper-large-v3
-  load_in_8bit: false
+  model_type: whisper
+  torch_dtype: float16
   load_in_4bit: true
-  checkpoint: null            # path to fine-tuned checkpoint, or null for pretrained
+
+dataset:
+  dataset_id: google/WaxalNLP
+  language: sna
+  streaming: true
+  sample_rate: 16000
 
 submission:
   output_dir: submissions
-  next_number: null           # null = auto-increment
+  next_number: null
   schema:
-    columns: [id, transcript]
-  validate: true              # schema + row-count check before writing
-
-# Path to the hidden test set audio (provided by the challenge).
-paths:
-  test_audio_dir: data/raw/test
+    columns: [ID, Target]
+  validate: true

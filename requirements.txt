@@ -2,38 +2,44 @@
 # Keep pinned to minor versions for reproducibility.
 
 # --- Core scientific stack ---
-numpy>=1.26,<2.0
-pandas>=2.2,<3.0
-scipy>=1.12,<2.0
+numpy>=1.26
+pandas>=2.2
+scipy>=1.12
 
 # --- Audio ---
-librosa>=0.10,<0.11
-soundfile>=0.12,<0.13
-audioread>=3.0,<4.0
+librosa>=0.10
+soundfile>=0.12
+audioread>=3.0
 
 # --- ML / Deep Learning ---
-torch>=2.2,<2.4
-torchaudio>=2.2,<2.4
-transformers>=4.40,<4.45
-datasets>=2.19,<3.0
-accelerate>=0.30,<1.0
-evaluate>=0.4,<0.5
-huggingface-hub>=0.23,<0.25
+torch>=2.2
+torchaudio>=2.2
+transformers>=4.49
+datasets>=2.19
+accelerate>=0.30
+evaluate>=0.4
+huggingface-hub>=0.23
+
+# --- PEFT / Fine-tuning ---
+trl>=0.12
+peft>=0.12
+bitsandbytes>=0.43
+
+# --- Model-specific requirements ---
+timm>=1.0
 
 # --- ASR / metrics ---
-jiwer>=3.0,<4.0
-python-Levenshtein>=0.25,<0.26
+jiwer>=3.0
+python-Levenshtein>=0.25
 
 # --- Configuration / experiment tracking ---
-omegaconf>=2.3,<3.0
-hydra-core>=1.3,<2.0
-pyyaml>=6.0,<7.0
-python-dotenv>=1.0,<2.0
-tqdm>=4.66,<5.0
-wandb>=0.16,<0.18
+pyyaml>=6.0
+python-dotenv>=1.0
+tqdm>=4.66
+wandb>=0.16
 
 # --- Utilities ---
-loguru>=0.7,<0.8
-rich>=13.7,<14.0
-typer>=0.12,<0.13
-platformdirs>=4.2,<5.0
+loguru>=0.7
+rich>=13.7
+typer>=0.12
+platformdirs>=4.2

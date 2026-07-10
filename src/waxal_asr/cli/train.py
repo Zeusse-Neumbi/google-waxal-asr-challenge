@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import typer
 
 from waxal_asr.config import load_config
+from waxal_asr.training.trainer import Trainer
 from waxal_asr.utils.logging import configure_logging, get_logger
 
 app = typer.Typer(add_completion=False, help="Train an ASR model.")
@@ -26,13 +26,10 @@ def main(
     log = get_logger("cli.train")
     log.info("config loaded", config=str(config), seed=cfg.repro.seed)
 
-    from waxal_asr.utils.seeding import seed_everything
+    trainer = Trainer(cfg)
+    trainer.fit()
 
-    seed_everything(cfg.repro.seed, deterministic=cfg.repro.deterministic)
-
-    # TODO(experiment 001): wire to Trainer.
-    log.warning("Trainer not yet implemented. See ROADMAP.md Phase 1.")
-    sys.exit(0)
+    log.info("Experiment complete")
 
 
 if __name__ == "__main__":

@@ -21,7 +21,7 @@ not just a competition notebook, but a reusable multilingual ASR research framew
 | Field     | Value                                          |
 | --------- | ---------------------------------------------- |
 | Challenge | Google WAXAL ASR Challenge                     |
-| Dataset   | Google WAXAL Dataset (multilingual speech)     |
+| Dataset   | Google WAXAL Dataset — 27 African languages, focus: Lingala, Shona, Luganda |
 | Metric    | `0.5 × WER + 0.5 × CER` (lower is better)      |
 | Eval      | Hidden leaderboard, unseen recordings           |
 

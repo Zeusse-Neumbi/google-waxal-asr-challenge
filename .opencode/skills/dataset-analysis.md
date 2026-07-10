@@ -5,7 +5,7 @@ Profile the WAXAL dataset: durations, sample rates, languages, transcripts, spli
 data-quality issues.
 
 ## Inputs
-- Manifest CSV (`audio_path, transcript, language, split, duration`).
+- HuggingFace dataset `google/WaxalNLP` or Zindi Train.csv (`id, transcription, language, original_split`).
 
 ## Outputs
 - `notebooks/02_dataset_analysis.ipynb` outputs:
@@ -33,4 +33,5 @@ summary = summarize_manifest("data/metadata/manifest.csv")
 ```
 
 ## References
+- WAXAL on HuggingFace: https://huggingface.co/datasets/google/WaxalNLP
 - See `DATASET.md` for the schema contract.

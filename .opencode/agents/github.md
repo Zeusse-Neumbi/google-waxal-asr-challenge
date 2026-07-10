@@ -1,4 +1,25 @@
-# Agent: GitHub
+---
+description: Manages git branches, PRs, issues, and CI workflow.
+mode: subagent
+model: openrouter/deepseek/deepseek-v4-flash
+permission:
+  "*": deny
+  read: allow
+  glob: allow
+  grep: allow
+  list: allow
+  edit: allow
+  bash:
+    "*": ask
+    "git *": allow
+    "gh *": allow
+    "git push --force*": deny
+    "git push -f*": deny
+    "git push origin --force*": deny
+  task: allow
+---
+
+# GitHub
 
 ## Purpose
 Manages git workflow, branches, PRs, issues, and CI.
@@ -15,9 +36,6 @@ Manages git workflow, branches, PRs, issues, and CI.
 - Never commit secrets, datasets, checkpoints, or caches.
 - Never develop directly on `main`.
 
-## Allowed Tools
-- bash (git, gh), read, write, edit, task
-
 ## Preferred Workflow
 1. Ensure a clean working tree.
 2. Branch from `dev`.
@@ -27,3 +45,13 @@ Manages git workflow, branches, PRs, issues, and CI.
 
 ## Output Format
 Branch name → PR URL → CI status.
+
+## Tool access
+Governed by the `permission` block in this file's frontmatter: full read/write/edit
+across the repo (for `.github/` templates and workflows), `bash` scoped to `git`/`gh`
+commands, with literal force-push patterns explicitly denied. That pattern match only
+catches the literal `--force`/`-f` flags — it can't detect "pushing to main while on a
+branch named main" or catch every alias, so treat "never develop directly on `main`" and
+"never commit secrets" as hard workflow rules this agent must self-enforce, and back
+them up with real GitHub branch-protection rules on `main`/`dev` and a `.gitignore` /
+secret-scanning setup outside of opencode.

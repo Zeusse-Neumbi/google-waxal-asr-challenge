@@ -67,6 +67,9 @@ secrets.yaml
 # --- Project data, outputs, checkpoints (stored on Google Drive, not in repo) ---
 data/raw/*
 data/processed/*
+
+# Downloaded competition data (keep locally, not in repo)
+google-waxal-asr-challenge20260630-10570-elxebu/
 data/interim/*
 data/external/*
 !data/**/.gitkeep

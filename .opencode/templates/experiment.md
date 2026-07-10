@@ -7,7 +7,7 @@ experiments/NNN_<name>/
 ├── config.yaml         # exact config used for the run
 ├── metrics.json        # WER, CER, combined, losses, timing
 ├── notes.md            # hypothesis, observations, decisions
-├── predictions.csv     # id, reference, hypothesis, language, duration
+├── predictions.csv     # id, target, language, duration
 ├── checkpoint.md       # path to best/last checkpoint + git SHA + seed
 ├── logs/               # training logs
 └── plots/              # loss curves, error heatmaps

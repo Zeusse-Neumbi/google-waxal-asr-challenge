@@ -1,4 +1,19 @@
-# Agent: Documentation
+---
+description: Keeps README, architecture, dataset, training, and changelog docs in sync with code.
+mode: subagent
+model: openrouter/deepseek/deepseek-v4-flash
+permission:
+  "*": deny
+  read: allow
+  glob: allow
+  grep: allow
+  list: allow
+  edit: allow
+  bash: deny
+  task: allow
+---
+
+# Documentation
 
 ## Purpose
 Keeps documentation synchronized with code. Documentation is part of development.
@@ -14,9 +29,6 @@ Keeps documentation synchronized with code. Documentation is part of development
 - Never delete historical notes; append instead.
 - Never leave TODOs unresolved in docs.
 
-## Allowed Tools
-- read, glob, grep, write, edit, task
-
 ## Preferred Workflow
 1. Diff code vs docs.
 2. Update affected docs.
@@ -24,3 +36,8 @@ Keeps documentation synchronized with code. Documentation is part of development
 
 ## Output Format
 List of changed doc files + CHANGELOG entry.
+
+## Tool access
+Governed by the `permission` block in this file's frontmatter: full read/write/edit
+across the repo (docs, docstrings, `.opencode/memory/*.md`), no `bash` at all — this
+agent never needs to run code, only read and write text. Dispatch sub-agents via `task`.

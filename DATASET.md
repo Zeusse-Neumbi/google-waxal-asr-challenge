@@ -1,74 +1,88 @@
 # DATASET
 
-Description of the Google WAXAL dataset used in this challenge.
+Description of the data sources for the Google WAXAL ASR Challenge.
 
 ---
 
 ## Overview
 
-The Google WAXAL dataset is a multilingual speech corpus provided for the WAXAL ASR
-Challenge. It contains audio recordings paired with text transcriptions across multiple
-languages (primarily West African languages).
+The challenge uses two data sources:
 
-> **TODO**: fill in authoritative statistics once the dataset is loaded into `data/raw/`.
-> The numbers below are placeholders pending the first EDA pass (see
-> `notebooks/02_dataset_analysis.ipynb`).
+1. **HuggingFace Dataset `google/WaxalNLP`** — the full WAXAL corpus of 27 African languages
+   with audio + transcriptions. Used for model training and development.
+2. **Zindi competition CSVs** — train/test IDs and metadata mapping to the HuggingFace data.
 
----
-
-## Directory Layout
-
-```
-data/
-├── raw/         # immutable, original files from the challenge
-├── processed/   # cleaned, resampled, split data
-├── interim/     # intermediate artifacts (e.g. feature caches)
-├── external/    # auxiliary data (noise corpora, LMs)
-└── metadata/    # manifests, splits, language maps
-```
-
-**Raw data is immutable.** Never edit files under `data/raw/`.
+> **Data is NOT stored locally under `data/raw/`.** The primary data source is HuggingFace.
+> Zindi CSVs (`Train.csv`, `Test.csv`, `SampleSubmission.csv`) live in the
+> `google-waxal-asr-challenge20260630-10570-elxebu/` directory.
 
 ---
 
-## Splits
+## Zindi CSV Format
 
-| Split   | Purpose                          |
-| ------- | -------------------------------- |
-| train   | Training only                    |
-| dev     | Validation, model selection      |
-| test    | Held-out, local evaluation only  |
-| hidden  | Leaderboard (not available)      |
+### Train.csv
+| Column | Description |
+| --- | --- |
+| `id` | Unique utterance ID (format: `<lang>_<number>`, e.g. `lug_96123`) |
+| `transcription` | Ground-truth text |
+| `language` | Language code (`lin`, `sna`, `lug`) |
+| `original_split` | HuggingFace split origin (`train`, `validation`, `test`) |
 
----
+### Test.csv
+| Column | Description |
+| --- | --- |
+| `ID` | Utterance ID (same format as Train.csv) |
 
-## Audio Properties
-
-To be determined via EDA. Track:
-
-- Sample rate distribution
-- Duration distribution
-- Channels (mono/stereo)
-- Bit depth
-- Clipping / silence ratio
-- SNR estimates
+### SampleSubmission.csv
+| Column | Description |
+| --- | --- |
+| `ID` | Utterance ID (must match Test.csv exactly) |
+| `Target` | Predicted transcription text |
 
 ---
 
 ## Languages
 
-Track per-language:
+The challenge focuses on 3 of the 27 WAXAL languages:
 
-- Number of utterances
-- Total audio hours
-- Character set / script
-- Code-switching frequency
+| Language | Code | Train.csv utterances |
+| --- | --- | --- |
+| Lingala | `lin` | 16,240 |
+| Shona | `sna` | 15,817 |
+| Luganda | `lug` | 6,119 |
+| **Total** | | **38,176** |
+
+---
+
+## Splits
+
+| Split | Purpose |
+| --- | --- |
+| train | Training only (from HuggingFace or `original_split=train`) |
+| validation | Model selection (from HuggingFace or `original_split=validation`) |
+| test | Phase 1 leaderboard (from Zindi Test.csv) |
+| hidden | Phase 2 unseen recordings (released during last week) |
+
+---
+
+## Audio Properties (from WAXAL dataset)
+
+- Sample rate: 16 kHz
+- Channels: mono
+- Format: various (HuggingFace handles conversion)
 
 ---
 
 ## Manifests
 
-A manifest is a CSV mapping `audio_path → transcript → language → duration → split`.
+A manifest is a CSV mapping `id → transcription → language → split`.
 
+The chat is not `audio_path` based — audio is loaded from HuggingFace by ID.
 Manifests live in `data/metadata/` and are the single source of truth for dataset access.
-Dataset loaders (`waxal_asr/data/`) never hardcode paths — they read manifests.
+
+---
+
+## Phase 2
+
+In the final week, a completely new test set is released (audio only). No metadata
+(language, speaker, gender) will be provided. Models must rely on the speech signal alone.
