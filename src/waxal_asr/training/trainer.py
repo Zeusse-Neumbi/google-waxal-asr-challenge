@@ -1,6 +1,6 @@
-"""Trainer orchestration — TRL-based fine-tuning loop.
+"""Trainer orchestration — model-type-dispatch training.
 
-Supports multiple model types (Gemma 3n, Whisper, etc.) via the ASRModel protocol
+Supports multiple model types (Gemma 3n, Whisper) via the ASRModel protocol
 and model-specific data collators.
 """
 
@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
 import torch
-import trl
 
 from waxal_asr.config.schemas import Config
 from waxal_asr.data.collator import get_collator
@@ -26,16 +26,37 @@ log = get_logger("training.trainer")
 class Trainer:
     """Fine-tuning orchestrator.
 
-    Wraps TRL's SFTTrainer with model-agnostic config-driven setup.
+    Dispatches to model-type-specific training paths:
+    - ``gemma3n``: TRL SFTTrainer with chat-template formatting.
+    - ``whisper``: HuggingFace Seq2SeqTrainer with audio feature extraction.
     """
 
     def __init__(self, config: Config) -> None:
         self.config = config
 
     def fit(self) -> None:
+        """Dispatch training to the appropriate model-type path."""
+        cfg = self.config
+        seed_everything(cfg.repro.seed, deterministic=cfg.repro.deterministic)
+
+        model_type = cfg.model.model_type
+        if model_type == "gemma3n":
+            self._fit_gemma()
+        elif model_type == "whisper":
+            self._fit_whisper()
+        else:
+            raise ValueError(f"Unsupported model_type: {model_type}")
+
+    # ------------------------------------------------------------------ #
+    # Gemma 3n (TRL SFTTrainer)
+    # ------------------------------------------------------------------ #
+
+    def _fit_gemma(self) -> None:
+        """TRL SFTTrainer fine-tuning for Gemma 3n (chat-template based)."""
         cfg = self.config
 
-        seed_everything(cfg.repro.seed, deterministic=cfg.repro.deterministic)
+        # Import TRL lazily — only needed for Gemma path.
+        import trl
 
         # ------------------------------------------------------------------ #
         # 1. Load model + processor
@@ -102,8 +123,6 @@ class Trainer:
         # ------------------------------------------------------------------ #
         # 5. TRL SFTConfig
         # ------------------------------------------------------------------ #
-        import trl
-
         training_args = trl.SFTConfig(
             output_dir=str(cfg.paths.outputs / f"gemma3n-asr-{cfg.dataset.language}"),
             max_steps=cfg.training.max_steps,
@@ -167,6 +186,177 @@ class Trainer:
         metrics = self._evaluate(model_obj, test_ds, cfg)
         log.info("Evaluation results", **metrics)
 
+    # ------------------------------------------------------------------ #
+    # Whisper (HuggingFace Seq2SeqTrainer)
+    # ------------------------------------------------------------------ #
+
+    def _fit_whisper(self) -> None:
+        """HuggingFace Seq2SeqTrainer fine-tuning for Whisper."""
+        cfg = self.config
+
+        # ------------------------------------------------------------------ #
+        # 1. Load model + processor via registry
+        # ------------------------------------------------------------------ #
+        log.info("Building model", model_type=cfg.model.model_type, model_id=cfg.model.model_id)
+        model_obj = _build_model_protocol(cfg)
+        model_obj.load()
+        model = model_obj.model
+        processor = model_obj.processor
+
+        log.info("Model loaded", device=next(model.parameters()).device, dtype=str(model.dtype))
+
+        # ------------------------------------------------------------------ #
+        # 2. Load datasets (train, validation)
+        # ------------------------------------------------------------------ #
+        log.info("Loading train dataset", language=cfg.dataset.language)
+        train_ds = load_waxal_dataset(
+            dataset_id=cfg.dataset.dataset_id,
+            language=cfg.dataset.language,
+            split="train",
+            streaming=cfg.dataset.streaming,
+            sample_rate=cfg.dataset.sample_rate,
+            subset=cfg.dataset.max_train_samples,
+        )
+
+        log.info("Loading validation dataset", language=cfg.dataset.language)
+        val_ds = load_waxal_dataset(
+            dataset_id=cfg.dataset.dataset_id,
+            language=cfg.dataset.language,
+            split="validation",
+            streaming=cfg.dataset.streaming,
+            sample_rate=cfg.dataset.sample_rate,
+        )
+
+        shuffled_train = train_ds.shuffle(buffer_size=1000, seed=cfg.repro.seed).repeat(None)
+        val_ds_fixed = val_ds.take(cfg.dataset.num_validation_examples)
+
+        # ------------------------------------------------------------------ #
+        # 3. Collator
+        # ------------------------------------------------------------------ #
+        collator = get_collator(
+            cfg.model.model_type, processor, max_length=cfg.training.max_seq_length
+        )
+
+        # ------------------------------------------------------------------ #
+        # 4. Optional LoRA
+        # ------------------------------------------------------------------ #
+        if cfg.lora.enabled:
+            import peft
+
+            lora_config = peft.LoraConfig(
+                task_type="SEQ_2_SEQ_LM",
+                r=cfg.lora.r,
+                lora_alpha=cfg.lora.alpha,
+                lora_dropout=cfg.lora.dropout,
+                target_modules=list(cfg.lora.target_modules),
+                bias=cfg.lora.bias,
+                use_rslora=cfg.lora.use_rslora,
+                use_dora=cfg.lora.use_dora,
+            )
+            from peft import get_peft_model
+
+            model = get_peft_model(model, lora_config)
+            log.info("LoRA applied to Whisper model")
+        else:
+            lora_config = None
+
+        # ------------------------------------------------------------------ #
+        # 5. Seq2SeqTrainingArguments
+        # ------------------------------------------------------------------ #
+        from transformers import Seq2SeqTrainingArguments
+
+        training_args = Seq2SeqTrainingArguments(
+            output_dir=str(cfg.paths.outputs / f"whisper-asr-{cfg.dataset.language}"),
+            max_steps=cfg.training.max_steps,
+            per_device_train_batch_size=cfg.training.per_device_train_batch_size,
+            per_device_eval_batch_size=cfg.training.per_device_eval_batch_size,
+            gradient_accumulation_steps=cfg.training.gradient_accumulation_steps,
+            gradient_checkpointing=cfg.training.gradient_checkpointing,
+            gradient_checkpointing_kwargs={"use_reentrant": False},
+            learning_rate=cfg.optimizer.lr,
+            weight_decay=cfg.optimizer.weight_decay,
+            logging_steps=cfg.training.logging_steps,
+            eval_strategy=cfg.training.eval_strategy,
+            eval_steps=cfg.training.eval_steps,
+            save_steps=cfg.training.save_steps,
+            save_total_limit=cfg.training.save_total_limit,
+            bf16=torch.cuda.is_bf16_supported(),
+            fp16=not torch.cuda.is_bf16_supported(),
+            report_to=cfg.training.report_to,
+            run_name=cfg.training.run_name or f"whisper-asr-{cfg.dataset.language}",
+            remove_unused_columns=cfg.training.remove_unused_columns,
+            dataloader_num_workers=cfg.training.dataloader_num_workers,
+            seed=cfg.repro.seed,
+            predict_with_generate=True,
+            generation_max_length=cfg.training.max_seq_length,
+        )
+
+        # ------------------------------------------------------------------ #
+        # 6. compute_metrics callback
+        # ------------------------------------------------------------------ #
+
+        def compute_metrics(eval_pred: Any) -> dict[str, float]:
+            """Decode predictions/labels and compute WER/CER."""
+            from waxal_asr.metrics.wer import cer as _cer
+            from waxal_asr.metrics.wer import wer as _wer
+
+            preds, labels = eval_pred
+            # Decode predictions (skip special tokens like <|startoftranscript|>)
+            decoded_preds: list[str] = processor.batch_decode(preds, skip_special_tokens=True)
+            # Replace -100 (ignore index) with pad_token_id before decoding
+            labels_clean = np.where(labels != -100, labels, processor.tokenizer.pad_token_id)
+            decoded_refs: list[str] = processor.batch_decode(labels_clean, skip_special_tokens=True)
+            refs_norm = normalize_corpus(decoded_refs)
+            preds_norm = normalize_corpus(decoded_preds)
+            return {"wer": _wer(refs_norm, preds_norm), "cer": _cer(refs_norm, preds_norm)}
+
+        # ------------------------------------------------------------------ #
+        # 7. Seq2SeqTrainer
+        # ------------------------------------------------------------------ #
+        from transformers import Seq2SeqTrainer
+
+        trainer = Seq2SeqTrainer(
+            model=model,
+            args=training_args,
+            data_collator=collator,
+            train_dataset=shuffled_train,
+            eval_dataset=val_ds_fixed,
+            processing_class=processor,
+            compute_metrics=compute_metrics,
+        )
+
+        log.info("Starting Whisper training …")
+        trainer.train()
+        log.info("Training complete.")
+
+        # ------------------------------------------------------------------ #
+        # 8. Save model + processor
+        # ------------------------------------------------------------------ #
+        save_path = str(cfg.paths.outputs / f"whisper-asr-{cfg.dataset.language}" / "checkpoint")
+        model_obj.save(save_path)
+        log.info("Model saved", path=save_path)
+
+        # ------------------------------------------------------------------ #
+        # 9. Evaluate on test set
+        # ------------------------------------------------------------------ #
+        log.info("Loading test dataset for evaluation")
+        test_ds = load_waxal_dataset(
+            dataset_id=cfg.dataset.dataset_id,
+            language=cfg.dataset.language,
+            split="test",
+            streaming=cfg.dataset.streaming,
+            sample_rate=cfg.dataset.sample_rate,
+        )
+        test_results = trainer.evaluate(test_ds)
+        log.info(
+            "Evaluation results",
+            **{k: v for k, v in test_results.items() if isinstance(v, float | int)},
+        )
+
+    # ------------------------------------------------------------------ #
+    # Evaluation (Gemma path only)
+    # ------------------------------------------------------------------ #
+
     def _evaluate(
         self,
         model_obj: Any,
@@ -175,7 +365,10 @@ class Trainer:
         num_samples: int = 200,
         batch_size: int = 4,
     ) -> dict[str, float]:
-        """Run WER/CER evaluation on a test dataset using the model."""
+        """Run WER/CER evaluation on a test dataset using the model.
+
+        Uses chat-template-based transcription (Gemma 3n specific).
+        """
         model = model_obj.model
         processor = model_obj.processor
         device = model.device
@@ -209,9 +402,12 @@ def _transcribe_batch(
     device: torch.device,
     max_new_tokens: int = 128,
 ) -> list[str]:
-    """Run inference on a batch and return decoded transcriptions."""
+    """Run inference on a batch and return decoded transcriptions.
+
+    Uses chat-template formatting (Gemma 3n specific).
+    """
     messages_list = [msgs[:-1] for msgs in batch["messages"]]
-    audio_list = [__import__("numpy").asarray(a["array"]).flatten() for a in batch["audio"]]
+    audio_list = [np.asarray(a["array"]).flatten() for a in batch["audio"]]
 
     text_prompts = processor.tokenizer.apply_chat_template(
         messages_list, add_generation_prompt=True, tokenize=False
@@ -245,7 +441,9 @@ def _build_model_protocol(config: Config) -> Any:
 class _PatchedSFTTrainer:
     """SFTTrainer subclass that patches create_model_card to avoid importlib issues."""
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> trl.SFTTrainer:
+    def __new__(cls, *args: Any, **kwargs: Any) -> Any:
+        import trl
+
         class _Trainer(trl.SFTTrainer):
             def create_model_card(
                 self,

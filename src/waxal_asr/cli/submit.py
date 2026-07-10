@@ -41,7 +41,11 @@ def main(
 
     # Load test CSV for ID mapping
     if test_csv is None:
-        test_csv = Path("google-waxal-asr-challenge20260630-10570-elxebu/Test.csv")
+        test_csv = Path(cfg.submission.test_csv) if cfg.submission.test_csv else None
+    if test_csv is None:
+        raise typer.BadParameter(
+            "Test CSV path not provided (set submission.test_csv in config or use --test-csv)."
+        )
     if not test_csv.exists():
         raise typer.BadParameter(f"Test CSV not found: {test_csv}")
     test_df = pd.read_csv(test_csv)

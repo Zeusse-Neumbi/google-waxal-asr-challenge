@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import torch
 import torchaudio
-from typing import cast
 
 __all__ = ["speed_perturb"]
 

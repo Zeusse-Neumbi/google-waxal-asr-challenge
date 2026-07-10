@@ -17,6 +17,9 @@ model:
   torch_dtype: float16
   load_in_4bit: false
 
+lora:
+  enabled: false
+
 training:
   max_steps: 5000
   per_device_train_batch_size: 16

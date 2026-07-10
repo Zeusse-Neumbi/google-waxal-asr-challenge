@@ -170,6 +170,7 @@ class TrainingConfig:
 @dataclass
 class SubmissionConfig:
     output_dir: Path = Path("submissions")
+    test_csv: Path | None = None
     next_number: int | None = None
     schema: dict = field(default_factory=lambda: {"columns": ["ID", "Target"]})
     validate: bool = True
