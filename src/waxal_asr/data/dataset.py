@@ -68,35 +68,47 @@ def load_waxal_dataset(
     streaming: bool = True,
     sample_rate: int = 16000,
     subset: int | None = None,
-) -> datasets.IterableDataset:
+) -> datasets.Dataset | datasets.IterableDataset:
     """Load a WaxalNLP language split with streaming and chat formatting.
+
+    When ``streaming=False``, data is still fetched via streaming internally (to avoid
+    downloading the 27 GB ``unlabeled`` split that Colab disk cannot hold), then
+    materialised into a regular :class:`datasets.Dataset` via ``Dataset.from_list``.
+    This keeps disk usage proportional to ``subset`` (or the full split size if no
+    subset), not the entire dataset config.
 
     Args:
         dataset_id: HuggingFace dataset identifier.
         language: Language code (e.g. 'sna', 'twi', 'hau').
         split: Dataset split ('train', 'validation', 'test').
-        streaming: Whether to stream (memory-efficient).
+        streaming: If True, return an IterableDataset. If False, return a regular
+            Dataset (materialised from a stream — see note above).
         sample_rate: Target audio sample rate in Hz.
         subset: If set, take only this many examples (for quick testing).
 
     Returns:
-        An formatted IterableDataset with 'messages' key added.
+        A formatted dataset (IterableDataset or Dataset) with 'messages' key added.
     """
+    # Always stream from HF — avoids downloading the unlabeled split (~27 GB).
     ds: datasets.IterableDataset = datasets.load_dataset(
         dataset_id,
         name=f"{language}_asr",
         split=split,
-        streaming=streaming,
+        streaming=True,
     )
 
     if subset is not None:
         ds = ds.take(subset)
 
     ds = ds.cast_column("audio", datasets.Audio(sampling_rate=sample_rate))
-
     ds = ds.map(format_batch, batched=True, batch_size=32)
 
-    return ds
+    if streaming:
+        return ds
+
+    # Materialise the stream into a regular Dataset for Seq2SeqTrainer compatibility.
+    # This decodes audio in-memory; keep `subset` bounded to avoid OOM.
+    return datasets.Dataset.from_list(list(ds))
 
 
 def interleaved_shuffle(

@@ -89,11 +89,16 @@ class Trainer:
             split="validation",
             streaming=cfg.dataset.streaming,
             sample_rate=cfg.dataset.sample_rate,
+            subset=cfg.dataset.num_validation_examples if not cfg.dataset.streaming else None,
         )
 
         # Shuffle + repeat the training set for endless streaming
-        shuffled_train = train_ds.shuffle(buffer_size=1000, seed=cfg.repro.seed).repeat(None)
-        val_ds_fixed = val_ds.take(cfg.dataset.num_validation_examples)
+        if cfg.dataset.streaming:
+            shuffled_train = train_ds.shuffle(buffer_size=1000, seed=cfg.repro.seed).repeat(None)
+            val_ds_fixed = val_ds.take(cfg.dataset.num_validation_examples)
+        else:
+            shuffled_train = train_ds.shuffle(seed=cfg.repro.seed)
+            val_ds_fixed = val_ds  # already limited by subset= during loading
 
         # ------------------------------------------------------------------ #
         # 3. Collator
@@ -180,8 +185,9 @@ class Trainer:
             dataset_id=cfg.dataset.dataset_id,
             language=cfg.dataset.language,
             split="test",
-            streaming=cfg.dataset.streaming,
+            streaming=True,  # _evaluate uses IterableDataset methods
             sample_rate=cfg.dataset.sample_rate,
+            subset=200,
         )
         metrics = self._evaluate(model_obj, test_ds, cfg)
         log.info("Evaluation results", **metrics)
@@ -225,10 +231,15 @@ class Trainer:
             split="validation",
             streaming=cfg.dataset.streaming,
             sample_rate=cfg.dataset.sample_rate,
+            subset=cfg.dataset.num_validation_examples if not cfg.dataset.streaming else None,
         )
 
-        shuffled_train = train_ds.shuffle(buffer_size=1000, seed=cfg.repro.seed).repeat(None)
-        val_ds_fixed = val_ds.take(cfg.dataset.num_validation_examples)
+        if cfg.dataset.streaming:
+            shuffled_train = train_ds.shuffle(buffer_size=1000, seed=cfg.repro.seed).repeat(None)
+            val_ds_fixed = val_ds.take(cfg.dataset.num_validation_examples)
+        else:
+            shuffled_train = train_ds.shuffle(seed=cfg.repro.seed)
+            val_ds_fixed = val_ds  # already limited by subset= during loading
 
         # ------------------------------------------------------------------ #
         # 3. Collator
@@ -344,8 +355,9 @@ class Trainer:
             dataset_id=cfg.dataset.dataset_id,
             language=cfg.dataset.language,
             split="test",
-            streaming=cfg.dataset.streaming,
+            streaming=False,  # always materialise for evaluation
             sample_rate=cfg.dataset.sample_rate,
+            subset=200,  # limit for quick evaluation
         )
         test_results = trainer.evaluate(test_ds)
         log.info(
