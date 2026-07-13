@@ -14,7 +14,7 @@ ruff>=0.4
 black>=24.4
 mypy>=1.10
 types-PyYAML>=6.0
-types-requests>=2.31
+types-requests>=2.33.0.20260712
 
 # --- Notebooks ---
 jupyter>=1.0
