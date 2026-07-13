@@ -28,4 +28,4 @@ pre-commit>=3.7
 # --- Documentation ---
 mkdocs>=1.6
 mkdocs-material>=9.5
-mkdocstrings[python]>=0.25
+mkdocstrings[python]>=1.0.6
