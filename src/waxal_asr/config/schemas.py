@@ -113,6 +113,7 @@ class HardwareConfig:
 class DatasetConfig:
     dataset_id: str = "google/WaxalNLP"
     language: str = "sna"
+    languages: list[str] | None = None
     streaming: bool = True
     sample_rate: int = 16000
     max_train_samples: int | None = None
