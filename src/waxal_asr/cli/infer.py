@@ -55,9 +55,20 @@ def main(
     ids: list[str] = []
     predictions: list[str] = []
 
+    model_type = cfg.model.model_type
+    if model_type == "gemma3n":
+        transcribe_fn = _transcribe_batch_gemma
+    elif model_type == "whisper":
+        transcribe_fn = _transcribe_batch_whisper
+    else:
+        raise ValueError(f"Unsupported model_type: {model_type}")
+
+    global_idx = 0
     for batch in tqdm(test_ds.batch(batch_size=batch_size), desc="Inferring"):
-        ids.extend(str(i) for i in range(len(batch.get("transcription", [1]))))
-        preds = _transcribe_batch(batch, model, processor, device)
+        batch_size = len(batch.get("transcription", [1]))
+        ids.extend(str(global_idx + i) for i in range(batch_size))
+        global_idx += batch_size
+        preds = transcribe_fn(batch, model, processor, device)
         predictions.extend(preds)
 
     df = pd.DataFrame({"ID": ids, "Target": predictions})
@@ -66,13 +77,21 @@ def main(
     log.info("Predictions saved", path=str(output), rows=len(df))
 
 
-def _transcribe_batch(
+def _transcribe_batch_gemma(
     batch: dict[str, list],
     model: torch.nn.Module,
     processor: Any,
     device: torch.device,
     max_new_tokens: int = 128,
 ) -> list[str]:
+    """Run Gemma inference on a batch using chat-template pipeline.
+
+    Gemma uses multimodal chat messages: each sample has a ``messages`` field
+    (with user/assistant turns) and an ``audio`` field. The last assistant
+    turn is stripped, a generation prompt is appended, and the model
+    generates from there. Only the newly generated tokens beyond the input
+    prefix are decoded.
+    """
     messages_list = [msgs[:-1] for msgs in batch["messages"]]
     audio_list = [np.asarray(a["array"]).flatten() for a in batch["audio"]]
 
@@ -95,6 +114,40 @@ def _transcribe_batch(
 
     input_len = inputs.input_ids.shape[1]
     decoded = processor.tokenizer.batch_decode(outputs[:, input_len:], skip_special_tokens=True)
+    return [t.strip() for t in decoded]
+
+
+def _transcribe_batch_whisper(
+    batch: dict[str, list],
+    model: torch.nn.Module,
+    processor: Any,
+    device: torch.device,
+    max_new_tokens: int = 128,
+) -> list[str]:
+    """Run Whisper inference on a batch.
+
+    Whisper uses the ``WhisperProcessor`` to extract log-mel features from
+    raw audio. No chat template — audio is passed directly to the feature
+    extractor, and ``model.generate()`` returns token IDs that are decoded
+    in one step.
+    """
+    audio_list = [np.asarray(a["array"]).flatten() for a in batch["audio"]]
+
+    inputs = processor(
+        audio=audio_list,
+        sampling_rate=16000,
+        return_tensors="pt",
+        padding=True,
+    ).to(device)
+
+    with torch.no_grad():
+        predicted_ids = model.generate(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            pad_token_id=processor.tokenizer.pad_token_id,
+        )
+
+    decoded = processor.batch_decode(predicted_ids, skip_special_tokens=True)
     return [t.strip() for t in decoded]
 
 

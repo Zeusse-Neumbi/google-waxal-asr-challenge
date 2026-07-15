@@ -25,6 +25,7 @@ dataset:
 
 submission:
   output_dir: submissions
+  test_csv: data/raw/Test.csv
   next_number: null
   schema:
     columns: [ID, Target]

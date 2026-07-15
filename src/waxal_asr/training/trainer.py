@@ -1,20 +1,24 @@
-"""Trainer orchestration — TRL-based fine-tuning loop.
+"""Streaming trainer — model-agnostic, true streaming, multilingual.
 
-Supports multiple model types (Gemma 3n, Whisper, etc.) via the ASRModel protocol
-and model-specific data collators.
+One unified training loop that works for any model implementing the ASRModel
+protocol (Whisper, Gemma, etc.). Iterates an IterableDataset directly —
+only one batch in RAM at a time. Supports multilingual training by interleaving
+language-specific dataset streams.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
 import torch
-import trl
 
 from waxal_asr.config.schemas import Config
 from waxal_asr.data.collator import get_collator
-from waxal_asr.data.dataset import load_waxal_dataset
+from waxal_asr.data.dataset import interleaved_shuffle, load_waxal_dataset
 from waxal_asr.metrics.text import normalize_corpus
+from waxal_asr.metrics.wer import cer as _cer
+from waxal_asr.metrics.wer import wer as _wer
 from waxal_asr.utils.logging import get_logger
 from waxal_asr.utils.seeding import seed_everything
 
@@ -24,235 +28,224 @@ log = get_logger("training.trainer")
 
 
 class Trainer:
-    """Fine-tuning orchestrator.
+    """Model-agnostic streaming trainer.
 
-    Wraps TRL's SFTTrainer with model-agnostic config-driven setup.
+    Works with any ASRModel (Whisper, Gemma, etc.) via the ASRModel protocol.
+    Supports multilingual training by interleaving language-specific streams.
+    True streaming — only one batch in RAM at a time, no dataset materialisation.
     """
 
     def __init__(self, config: Config) -> None:
         self.config = config
 
     def fit(self) -> None:
+        """Run streaming fine-tuning on the configured model + languages."""
         cfg = self.config
-
         seed_everything(cfg.repro.seed, deterministic=cfg.repro.deterministic)
 
-        # ------------------------------------------------------------------ #
-        # 1. Load model + processor
-        # ------------------------------------------------------------------ #
+        # -- Languages ----------------------------------------------------- #
+        languages = cfg.dataset.languages or [cfg.dataset.language]
+        log.info("Training languages", languages=languages)
+
+        # -- 1. Build model + processor ----------------------------------- #
         log.info("Building model", model_type=cfg.model.model_type, model_id=cfg.model.model_id)
-        model_obj = _build_model_protocol(cfg)
+        model_obj = _build_model(cfg)
         model_obj.load()
         model = model_obj.model
         processor = model_obj.processor
+        device = next(model.parameters()).device
+        log.info("Model loaded", device=device, dtype=str(model.dtype))
 
-        log.info("Model loaded", device=next(model.parameters()).device, dtype=str(model.dtype))
+        # -- 2. Build multilingual streaming datasets ---------------------- #
+        log.info("Building training stream")
+        train_stream = self._build_train_stream(languages, cfg)
+        log.info("Building validation stream")
+        val_stream = self._build_val_stream(languages, cfg)
 
-        # ------------------------------------------------------------------ #
-        # 2. Load datasets
-        # ------------------------------------------------------------------ #
-        log.info("Loading train dataset", language=cfg.dataset.language)
-        train_ds = load_waxal_dataset(
-            dataset_id=cfg.dataset.dataset_id,
-            language=cfg.dataset.language,
-            split="train",
-            streaming=cfg.dataset.streaming,
-            sample_rate=cfg.dataset.sample_rate,
-            subset=cfg.dataset.max_train_samples,
-        )
-
-        log.info("Loading validation dataset", language=cfg.dataset.language)
-        val_ds = load_waxal_dataset(
-            dataset_id=cfg.dataset.dataset_id,
-            language=cfg.dataset.language,
-            split="validation",
-            streaming=cfg.dataset.streaming,
-            sample_rate=cfg.dataset.sample_rate,
-        )
-
-        # Shuffle + repeat the training set for endless streaming
-        shuffled_train = train_ds.shuffle(buffer_size=1000, seed=cfg.repro.seed).repeat(None)
-        val_ds_fixed = val_ds.take(cfg.dataset.num_validation_examples)
-
-        # ------------------------------------------------------------------ #
-        # 3. Collator
-        # ------------------------------------------------------------------ #
+        # -- 3. Collator --------------------------------------------------- #
         collator = get_collator(
             cfg.model.model_type, processor, max_length=cfg.training.max_seq_length
         )
 
-        # ------------------------------------------------------------------ #
-        # 4. LoRA config
-        # ------------------------------------------------------------------ #
-        lora_config = None
-        if cfg.lora.enabled:
-            import peft
+        # -- 4. Optimizer + scheduler -------------------------------------- #
+        optimizer = self._build_optimizer(model, cfg)
+        scheduler = self._build_scheduler(optimizer, cfg)
 
-            lora_config = peft.LoraConfig(
-                task_type="CAUSAL_LM",
-                r=cfg.lora.r,
-                lora_alpha=cfg.lora.alpha,
-                lora_dropout=cfg.lora.dropout,
-                target_modules=list(cfg.lora.target_modules),
-                bias=cfg.lora.bias,
-                use_rslora=cfg.lora.use_rslora,
-                use_dora=cfg.lora.use_dora,
+        # -- 5. Training loop ---------------------------------------------- #
+        model.train()
+        batch_size = cfg.training.per_device_train_batch_size
+        accum_steps = cfg.training.gradient_accumulation_steps
+        max_steps = cfg.training.max_steps
+        global_step = 0
+        accum_loss = 0.0
+
+        log.info(
+            "Starting streaming training",
+            max_steps=max_steps,
+            batch_size=batch_size,
+            accum_steps=accum_steps,
+        )
+
+        for batch_count, raw_batch in enumerate(train_stream.batch(batch_size=batch_size), start=1):
+            # Convert HF dict-of-lists to list-of-dicts for the collator
+            batch_len = len(next(iter(raw_batch.values())))
+            examples = [{k: raw_batch[k][i] for k in raw_batch} for i in range(batch_len)]
+            tensor_batch = collator(examples)
+            tensor_batch = {
+                k: v.to(device) if isinstance(v, torch.Tensor) else v
+                for k, v in tensor_batch.items()
+            }
+
+            # Forward + backward
+            outputs = model(**tensor_batch)
+            loss = outputs.loss / accum_steps
+            loss.backward()
+            accum_loss += loss.item()
+
+            # Optimizer step (every accum_steps batches)
+            if batch_count % accum_steps == 0:
+                optimizer.step()
+                scheduler.step()
+                optimizer.zero_grad()
+                global_step += 1
+
+                # Logging
+                if global_step % cfg.training.logging_steps == 0:
+                    avg_loss = accum_loss / accum_steps
+                    log.info(
+                        "train",
+                        step=global_step,
+                        loss=f"{avg_loss:.4f}",
+                        lr=f"{scheduler.get_last_lr()[0]:.2e}",
+                    )
+                    accum_loss = 0.0
+
+                # Evaluation
+                if global_step % cfg.training.eval_steps == 0:
+                    metrics = self._evaluate(model_obj, val_stream, cfg)
+                    log.info("eval", step=global_step, **metrics)
+                    model.train()
+
+                # Checkpoint
+                if global_step % cfg.training.save_steps == 0:
+                    save_path = str(
+                        cfg.paths.outputs
+                        / f"{cfg.model.model_type}-asr-multilingual"
+                        / f"checkpoint-{global_step}"
+                    )
+                    model_obj.save(save_path)
+                    log.info("checkpoint saved", path=save_path)
+
+                if global_step >= max_steps:
+                    break
+
+        # -- 6. Final save ------------------------------------------------- #
+        final_path = str(cfg.paths.outputs / f"{cfg.model.model_type}-asr-multilingual" / "final")
+        model_obj.save(final_path)
+        log.info("Training complete. Model saved.", path=final_path)
+
+        # -- 7. Final evaluation ------------------------------------------- #
+        metrics = self._evaluate(model_obj, val_stream, cfg)
+        log.info("Final evaluation", **metrics)
+
+    def _build_train_stream(self, languages: list[str], cfg: Config) -> Any:
+        """Build an interleaved, shuffled, repeated training stream."""
+        lang_streams = []
+        for lang in languages:
+            ds = load_waxal_dataset(
+                dataset_id=cfg.dataset.dataset_id,
+                language=lang,
+                split="train",
+                streaming=True,
+                sample_rate=cfg.dataset.sample_rate,
+                subset=cfg.dataset.max_train_samples,
             )
+            lang_streams.append(ds)
 
-        # ------------------------------------------------------------------ #
-        # 5. TRL SFTConfig
-        # ------------------------------------------------------------------ #
-        import trl
+        if len(lang_streams) == 1:
+            combined = lang_streams[0]
+        else:
+            combined = interleaved_shuffle(lang_streams, seed=cfg.repro.seed)
 
-        training_args = trl.SFTConfig(
-            output_dir=str(cfg.paths.outputs / f"gemma3n-asr-{cfg.dataset.language}"),
-            max_steps=cfg.training.max_steps,
-            eval_strategy=cfg.training.eval_strategy,
-            eval_steps=cfg.training.eval_steps,
-            per_device_train_batch_size=cfg.training.per_device_train_batch_size,
-            per_device_eval_batch_size=cfg.training.per_device_eval_batch_size,
-            gradient_accumulation_steps=cfg.training.gradient_accumulation_steps,
-            gradient_checkpointing=cfg.training.gradient_checkpointing,
-            gradient_checkpointing_kwargs={"use_reentrant": False},
-            learning_rate=cfg.optimizer.lr,
-            logging_steps=cfg.training.logging_steps,
-            save_steps=cfg.training.save_steps,
-            save_total_limit=cfg.training.save_total_limit,
-            bf16=torch.cuda.is_bf16_supported(),
-            fp16=not torch.cuda.is_bf16_supported(),
-            report_to=cfg.training.report_to,
-            run_name=cfg.training.run_name or f"gemma3n-asr-{cfg.dataset.language}",
-            dataset_kwargs={"skip_prepare_dataset": True},
-            remove_unused_columns=cfg.training.remove_unused_columns,
-            max_length=cfg.training.max_seq_length,
-            packing=cfg.training.packing,
-            dataloader_num_workers=cfg.training.dataloader_num_workers,
-            seed=cfg.repro.seed,
-        )
+        return combined.shuffle(buffer_size=1000, seed=cfg.repro.seed).repeat(None)
 
-        # ------------------------------------------------------------------ #
-        # 6. SFTTrainer
-        # ------------------------------------------------------------------ #
-        trainer = _PatchedSFTTrainer(
-            model=model,
-            args=training_args,
-            data_collator=collator,
-            train_dataset=shuffled_train,
-            eval_dataset=val_ds_fixed,
-            peft_config=lora_config,
-        )
+    def _build_val_stream(self, languages: list[str], cfg: Config) -> Any:
+        """Build an interleaved validation stream."""
+        lang_streams = []
+        for lang in languages:
+            ds = load_waxal_dataset(
+                dataset_id=cfg.dataset.dataset_id,
+                language=lang,
+                split="validation",
+                streaming=True,
+                sample_rate=cfg.dataset.sample_rate,
+            )
+            lang_streams.append(ds)
 
-        log.info("Starting training …")
-        trainer.train()  # type: ignore[attr-defined]
-        log.info("Training complete.")
-
-        # ------------------------------------------------------------------ #
-        # 7. Save adapter
-        # ------------------------------------------------------------------ #
-        save_path = str(cfg.paths.outputs / "adapter")
-        model_obj.save(save_path)
-        log.info("Adapter saved", path=save_path)
-
-        # ------------------------------------------------------------------ #
-        # 8. Evaluate on test set
-        # ------------------------------------------------------------------ #
-        log.info("Loading test dataset for evaluation")
-        test_ds = load_waxal_dataset(
-            dataset_id=cfg.dataset.dataset_id,
-            language=cfg.dataset.language,
-            split="test",
-            streaming=cfg.dataset.streaming,
-            sample_rate=cfg.dataset.sample_rate,
-        )
-        metrics = self._evaluate(model_obj, test_ds, cfg)
-        log.info("Evaluation results", **metrics)
+        if len(lang_streams) == 1:
+            return lang_streams[0]
+        return interleaved_shuffle(lang_streams, seed=cfg.repro.seed)
 
     def _evaluate(
         self,
         model_obj: Any,
-        test_ds: Any,
+        val_stream: Any,
         cfg: Config,
-        num_samples: int = 200,
-        batch_size: int = 4,
     ) -> dict[str, float]:
-        """Run WER/CER evaluation on a test dataset using the model."""
-        model = model_obj.model
-        processor = model_obj.processor
-        device = model.device
-        model.eval()
+        """Model-agnostic evaluation: transcribe N samples, compute WER/CER.
 
-        references: list[str] = []
-        predictions: list[str] = []
+        Uses model_obj.transcribe() (ASRModel protocol) — works for any model.
+        """
+        num = cfg.dataset.num_validation_examples
+        model_obj.model.eval()
 
-        test_subset = test_ds.take(num_samples)
-        for batch in test_subset.batch(batch_size=batch_size):
-            preds = _transcribe_batch(batch, model, processor, device)
-            references.extend(str(r) for r in batch["transcription"])
-            predictions.extend(preds)
+        refs: list[str] = []
+        preds: list[str] = []
 
-        refs_norm = normalize_corpus(references)
-        preds_norm = normalize_corpus(predictions)
+        for ex in val_stream.take(num):
+            audio_array = np.asarray(ex["audio"]["array"]).flatten()
+            audio_tensor = torch.from_numpy(audio_array)
+            sr = ex["audio"]["sampling_rate"]
 
-        from waxal_asr.metrics.wer import cer as _cer
-        from waxal_asr.metrics.wer import wer as _wer
+            text = model_obj.transcribe(audio_tensor, sr, max_new_tokens=128)
+            refs.append(str(ex["transcription"]))
+            preds.append(text)
+
+        refs_norm = normalize_corpus(refs)
+        preds_norm = normalize_corpus(preds)
 
         return {
             "wer": _wer(refs_norm, preds_norm),
             "cer": _cer(refs_norm, preds_norm),
         }
 
+    def _build_optimizer(self, model: torch.nn.Module, cfg: Config) -> torch.optim.Optimizer:
+        """Build optimizer from config."""
+        from torch.optim import AdamW
 
-def _transcribe_batch(
-    batch: dict[str, list[Any]],
-    model: torch.nn.Module,
-    processor: Any,
-    device: torch.device,
-    max_new_tokens: int = 128,
-) -> list[str]:
-    """Run inference on a batch and return decoded transcriptions."""
-    messages_list = [msgs[:-1] for msgs in batch["messages"]]
-    audio_list = [__import__("numpy").asarray(a["array"]).flatten() for a in batch["audio"]]
-
-    text_prompts = processor.tokenizer.apply_chat_template(
-        messages_list, add_generation_prompt=True, tokenize=False
-    )
-    inputs = processor(
-        text=text_prompts,
-        audio=audio_list,
-        return_tensors="pt",
-        padding=True,
-    ).to(device)
-
-    with torch.no_grad():
-        outputs = model.generate(
-            **inputs,
-            max_new_tokens=max_new_tokens,
-            pad_token_id=processor.tokenizer.pad_token_id,
+        return AdamW(
+            model.parameters(),
+            lr=cfg.optimizer.lr,
+            weight_decay=cfg.optimizer.weight_decay,
+            betas=cfg.optimizer.betas,
+            eps=cfg.optimizer.eps,
         )
 
-    input_len = inputs.input_ids.shape[1]
-    decoded = processor.tokenizer.batch_decode(outputs[:, input_len:], skip_special_tokens=True)
-    return [t.strip() for t in decoded]
+    def _build_scheduler(self, optimizer: torch.optim.Optimizer, cfg: Config) -> Any:
+        """Build LR scheduler from config."""
+        from transformers import get_scheduler
+
+        num_warmup = int(cfg.training.max_steps * cfg.scheduler.warmup_ratio)
+        return get_scheduler(
+            name=cfg.scheduler.name,
+            optimizer=optimizer,
+            num_warmup_steps=num_warmup,
+            num_training_steps=cfg.training.max_steps,
+        )
 
 
-def _build_model_protocol(config: Config) -> Any:
+def _build_model(config: Config) -> Any:
     """Build a model instance from config using the registry."""
     from waxal_asr.models.registry import build_model
 
     return build_model(config.model.model_type, config=config)
-
-
-class _PatchedSFTTrainer:
-    """SFTTrainer subclass that patches create_model_card to avoid importlib issues."""
-
-    def __new__(cls, *args: Any, **kwargs: Any) -> trl.SFTTrainer:
-        class _Trainer(trl.SFTTrainer):
-            def create_model_card(
-                self,
-                model_name: str | None = None,
-                dataset_name: str | None = None,
-                tags: str | list[str] | None = None,
-            ) -> None:
-                pass
-
-        return _Trainer(*args, **kwargs)

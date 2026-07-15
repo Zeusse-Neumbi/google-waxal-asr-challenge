@@ -69,8 +69,16 @@ def evaluate(
             "id": list(ids) if ids is not None else range(len(norm_ref)),
             "reference": norm_ref,
             "hypothesis": norm_hyp,
-            "language": list(languages) if languages is not None else cast("list[str]", [None] * len(norm_ref)),
-            "duration": list(durations) if durations is not None else cast("list[float]", [None] * len(norm_ref)),
+            "language": (
+                list(languages)
+                if languages is not None
+                else cast("list[str]", [None] * len(norm_ref))
+            ),
+            "duration": (
+                list(durations)
+                if durations is not None
+                else cast("list[float]", [None] * len(norm_ref))
+            ),
         }
     )
     preds.to_csv(output_dir / "predictions.csv", index=False)

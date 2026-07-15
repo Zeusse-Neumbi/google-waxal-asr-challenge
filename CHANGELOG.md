@@ -49,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Remaining stale references to OmegaConf, Hydra, and isort across docs and config.
+- Pinned `datasets<5.0` and `transformers<5.0` in `requirements.txt`. The uncapped `>=` spec resolved to `datasets==5.0.0` / `transformers==5.13.0` (breaking majors). `datasets` 5.0 replaced the `Audio` feature's `{"array","sampling_rate"}` dict output with `torchcodec.decoders.AudioDecoder` objects, which crashed the data pipeline at `data/dataset.py` `.map()` (Arrow could not infer a type for `AudioDecoder`). Pin restores the dict contract the dataset/collator/trainer code expects.
 
 ### Deprecated
 - None yet.

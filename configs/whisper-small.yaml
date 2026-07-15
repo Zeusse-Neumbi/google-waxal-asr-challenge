@@ -11,11 +11,17 @@ raw:
     number: 001
     description: "Whisper-small fine-tune baseline on WAXAL."
 
+dataset:
+  languages: [lin, sna, lug]
+
 model:
   model_id: openai/whisper-small
   model_type: whisper
   torch_dtype: float16
   load_in_4bit: false
+
+lora:
+  enabled: false
 
 training:
   max_steps: 5000

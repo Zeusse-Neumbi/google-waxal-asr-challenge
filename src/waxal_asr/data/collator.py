@@ -12,7 +12,7 @@ from typing import Any
 import numpy as np
 import torch
 
-__all__ = ["ChatCollator", "get_collator"]
+__all__ = ["ChatCollator", "WhisperCollator", "get_collator"]
 
 
 def _mask_labels(
@@ -71,8 +71,51 @@ class ChatCollator:
         return batch
 
 
+class WhisperCollator:
+    """Collator for Whisper-style encoder-decoder models.
+
+    Processes audio waveforms into log-mel spectrogram ``input_features``
+    and tokenizes transcriptions into ``labels`` (decoder input IDs).
+    Does **not** use chat templates — reads ``audio`` and ``transcription``
+    directly from each example.
+    """
+
+    def __init__(self, processor: Any, max_length: int = 448) -> None:
+        self._processor = processor
+        self._max_length = max_length
+
+    def __call__(self, examples: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+        audios = [np.asarray(ex["audio"]["array"]).flatten() for ex in examples]
+        transcriptions = [str(ex["transcription"]) for ex in examples]
+
+        # 1. Audio → log-mel input_features
+        batch: dict[str, Any] = self._processor(
+            audios,
+            sampling_rate=16000,
+            return_tensors="pt",
+        )
+
+        # 2. Transcriptions → label IDs
+        labels_batch = self._processor.tokenizer(
+            transcriptions,
+            padding=True,
+            max_length=self._max_length,
+            truncation=True,
+            return_tensors="pt",
+        )
+        batch["labels"] = labels_batch["input_ids"]
+
+        # 3. Mask padding tokens to -100 (ignored by cross-entropy loss)
+        pad_id = self._processor.tokenizer.pad_token_id
+        if pad_id is not None:
+            batch["labels"][batch["labels"] == pad_id] = -100
+
+        return batch
+
+
 _COLLATOR_MAP = {
     "gemma3n": ChatCollator,
+    "whisper": WhisperCollator,
 }
 
 
@@ -80,16 +123,16 @@ def get_collator(
     model_type: str,
     processor: Any,
     max_length: int = 64,
-) -> ChatCollator:
-    """Get a partially-applied collator for the given model type.
+) -> Any:
+    """Return a collator instance for the given model type.
 
     Args:
-        model_type: One of 'gemma3n', 'whisper', etc.
+        model_type: One of 'gemma3n', 'whisper'.
         processor: The model processor (tokenizer + feature extractor).
-        max_length: Maximum sequence length.
+        max_length: Maximum sequence length for labels.
 
     Returns:
-        A functools.partial wrapping the appropriate collator.
+        An instance of the appropriate collator class.
     """
     collator_cls = _COLLATOR_MAP.get(model_type)
     if collator_cls is None:

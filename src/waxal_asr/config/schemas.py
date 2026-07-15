@@ -113,6 +113,7 @@ class HardwareConfig:
 class DatasetConfig:
     dataset_id: str = "google/WaxalNLP"
     language: str = "sna"
+    languages: list[str] | None = None
     streaming: bool = True
     sample_rate: int = 16000
     max_train_samples: int | None = None
@@ -170,6 +171,7 @@ class TrainingConfig:
 @dataclass
 class SubmissionConfig:
     output_dir: Path = Path("submissions")
+    test_csv: Path | None = None
     next_number: int | None = None
     schema: dict = field(default_factory=lambda: {"columns": ["ID", "Target"]})
     validate: bool = True
