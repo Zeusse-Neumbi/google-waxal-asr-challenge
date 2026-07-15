@@ -14,8 +14,8 @@ audioread>=3.0
 # --- ML / Deep Learning ---
 torch>=2.2
 torchaudio>=2.2
-transformers>=4.49
-datasets>=2.19
+transformers>=4.49,<5.0
+datasets>=2.19,<5.0
 accelerate>=0.30
 evaluate>=0.4
 huggingface-hub>=0.23

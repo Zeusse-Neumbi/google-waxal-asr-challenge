@@ -192,6 +192,29 @@ Tasks:
 | R4 | **HF dataset access** — `google/WaxalNLP` may be gated | Verify `HF_TOKEN` env var; add to `.env` |
 | R5 | **Streaming + Seq2SeqTrainer** — `Seq2SeqTrainer` may not support `IterableDataset` well | Set `streaming: false` + `max_train_samples` to materialize a subset; or pre-download |
 | R6 | **Evaluation path** — current `_evaluate` is Gemma-specific | Whisper path uses `trainer.predict()` + `compute_metrics` (Step 4) |
+| R7 | **`datasets` 5.0 / `transformers` 5.0 breakage** — uncapped `>=` pins in `requirements.txt` resolved to breaking majors. `datasets` 5.0 replaced the `Audio` feature's `{"array","sampling_rate"}` dict with `torchcodec.decoders.AudioDecoder` objects, crashing the pipeline at `data/dataset.py` `.map()` (Arrow cannot infer a type for `AudioDecoder`) | **Resolved (2026-07-15):** pinned `datasets>=2.19,<5.0` + `transformers>=4.49,<5.0`. See follow-up below for the forward-compatible migration. |
+
+### Follow-up — `datasets` 5.0 / `torchcodec` migration · `dataset-engineer` + `training` agents 📋
+
+The pin above (R7) is a temporary unblock. The forward-compatible fix is to adopt the
+new `datasets` 5.0 `Audio` API. Do this before bumping the pin past `<5.0`.
+
+Tasks:
+- Add `torchcodec` to `requirements.txt` (hard dep of `datasets>=5.0`).
+- Lift the `datasets<5.0` / `transformers<5.0` upper bounds.
+- Rewrite audio consumers to the `AudioDecoder` API (`get_samples_played_in_range` /
+  `.data` / `.sample_rate`) instead of `["array"]` / `["sampling_rate"]`:
+  - `data/dataset.py:32` (`format_for_chat`)
+  - `data/collator.py:59` (`ChatCollator`), `:88` (`WhisperCollator`)
+  - `training/trainer.py:206-208` (`_evaluate`)
+- Skip the `format_batch` `.map()` for the Whisper path (only Gemma needs `messages`;
+  `WhisperCollator` ignores it — the map is what forces audio through Arrow today).
+- Respect `cfg.dataset.streaming` in `trainer.py:159`/`:180` (currently hardcoded `True`).
+- Add an upper-bound policy note to `requirements.txt` header so future `>=` pins on
+  ML libs (torch, transformers, datasets) don't silently pull breaking majors.
+
+**Acceptance:** `datasets==5.x` + `torchcodec` installed; `Trainer(cfg).fit()` completes
+on `whisper-small.yaml` without the `AudioDecoder` Arrow error; quality gate passes.
 
 ---
 
